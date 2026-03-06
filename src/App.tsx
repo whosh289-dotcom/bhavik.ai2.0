@@ -16,7 +16,10 @@ import {
   ChevronRight,
   Settings,
   MoreVertical,
-  Trash2
+  Trash2,
+  Copy,
+  Check,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -48,6 +51,27 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('BHAVIK_API_KEY') || '');
+  const [globalApiKey, setGlobalApiKey] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch global config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        const data = await res.json();
+        if (data.globalApiKey) {
+          setGlobalApiKey(data.globalApiKey);
+        }
+      } catch (err) {
+        console.error('Failed to fetch global config:', err);
+      }
+    };
+    fetchConfig();
+  }, []);
   
   // Update sidebar state on resize - only if we want to force it open on large screens, 
   // but the user wants to see the chat, so let's keep it closed initially.
@@ -121,11 +145,45 @@ export default function App() {
 
   const getApiKey = () => {
     const keys = [
+      customApiKey,
+      globalApiKey,
       process.env.GEMINI_API_KEY,
       process.env.GOOGLE_API_KEY,
       process.env.API_KEY
     ];
     return keys.find(k => k && k !== 'MY_GEMINI_API_KEY') || null;
+  };
+
+  const handleSaveApiKey = (key: string) => {
+    setCustomApiKey(key);
+    localStorage.setItem('BHAVIK_API_KEY', key);
+  };
+
+  const handleCopyApiKey = () => {
+    if (!customApiKey) return;
+    navigator.clipboard.writeText(customApiKey);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleSaveGlobalApiKey = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ globalApiKey: customApiKey })
+      });
+      if (res.ok) {
+        setGlobalApiKey(customApiKey);
+        alert('API Key saved globally for all users.');
+      }
+    } catch (err) {
+      console.error('Failed to save global config:', err);
+      alert('Failed to save global API key.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -322,7 +380,10 @@ export default function App() {
           </div>
 
           <div className="mt-auto pt-4 border-t border-white/5">
-            <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all">
+            <div 
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all"
+            >
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold">
                 B
               </div>
@@ -555,6 +616,107 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSettingsOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600/20 flex items-center justify-center">
+                    <Settings className="text-indigo-400" size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold">Settings</h2>
+                    <p className="text-xs text-zinc-500">Manage your Bhavik AI experience</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="p-2 hover:bg-white/5 rounded-full text-zinc-500 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-3">
+                  <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Gemini API Key</label>
+                  <div className="relative group">
+                    <input 
+                      type="password"
+                      value={customApiKey}
+                      onChange={(e) => handleSaveApiKey(e.target.value)}
+                      placeholder="Paste your API key here..."
+                      className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-zinc-700"
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      <button 
+                        onClick={handleCopyApiKey}
+                        disabled={!customApiKey}
+                        className="p-2 hover:bg-white/5 rounded-lg text-zinc-500 hover:text-indigo-400 transition-all disabled:opacity-30"
+                        title="Copy API Key"
+                      >
+                        {isCopied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[10px] text-zinc-500 leading-relaxed">
+                      Your API key is stored locally in your browser. To set it for <b>all users</b> of this AI, use the button below.
+                    </p>
+                    <button 
+                      onClick={handleSaveGlobalApiKey}
+                      disabled={!customApiKey || isSaving}
+                      className="w-full py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all disabled:opacity-30 flex items-center justify-center gap-2"
+                    >
+                      {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} className="text-indigo-400" />}
+                      Save for Whole AI
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/5">
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        getApiKey() ? "bg-emerald-500 animate-pulse" : "bg-red-500"
+                      )} />
+                      <span className="text-sm font-medium">System Status</span>
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                      {getApiKey() ? "Connected" : "Disconnected"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-black/20 border-t border-white/5 flex justify-end">
+                <button 
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-600/20"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
